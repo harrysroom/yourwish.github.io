@@ -26,3 +26,480 @@ premium-platform/
 │
 └── database/
     └── schema.sql
+    
+    CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role VARCHAR(20) DEFAULT 'user',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+const express = require("express");
+const cors = require("cors");
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.json({ message: "API Running" });
+});
+
+app.listen(5000, () => {
+  console.log("Server running on port 5000");
+});
+const express = require("express");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+
+const router = express.Router();
+
+router.post("/register", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const hash = await bcrypt.hash(password, 10);
+
+    res.status(201).json({
+      success: true,
+      email,
+      passwordHash: hash
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      error: error.message
+    });
+  }
+});
+
+module.exports = router;
+router.post("/login", async (req, res) => {
+  const token = jwt.sign(
+    { userId: 1 },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+
+  res.json({ token });
+});
+export default function Home() {
+  return (
+    <main>
+      <h1>Premium Content Platform</h1>
+
+      <a href="/register">
+        Create Account
+      </a>
+
+      <a href="/login">
+        Login
+      </a>
+    </main>
+  );
+}
+export default function Login() {
+  return (
+    <div>
+      <h2>Login</h2>
+
+      <form>
+        <input
+          type="email"
+          placeholder="Email"
+        />
+
+        <input
+          type="password"
+          placeholder="Password"
+        />
+
+        <button type="submit">
+          Login
+        </button>
+      </form>
+    </div>
+  );
+}
+PORT=5000
+
+JWT_SECRET=CHANGE_THIS_SECRET
+
+DATABASE_URL=postgresql://postgres:password@localhost:5432/platform
+npm install express bcrypt jsonwebtoken pg dotenv cors helmet express-rate-limit
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(100) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    role VARCHAR(20) DEFAULT 'user',
+    avatar_url TEXT,
+    bio TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+const { Pool } = require("pg");
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL
+});
+
+module.exports = pool;
+const jwt = require("jsonwebtoken");
+
+module.exports = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).json({
+      message: "Not authenticated"
+    });
+  }
+
+  try {
+    const token = authHeader.split(" ")[1];
+
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    );
+
+    req.user = decoded;
+
+    next();
+
+  } catch {
+    return res.status(401).json({
+      message: "Invalid token"
+    });
+  }
+};
+router.post("/register", async (req, res) => {
+
+  const { email, username, password } = req.body;
+
+  const hash = await bcrypt.hash(password, 12);
+
+  const result = await pool.query(
+    `
+      INSERT INTO users
+      (id,email,username,password_hash)
+      VALUES
+      (gen_random_uuid(),$1,$2,$3)
+      RETURNING id,email,username
+    `,
+    [email, username, hash]
+  );
+
+  res.json(result.rows[0]);
+});
+router.post("/login", async (req, res) => {
+
+  const { email, password } = req.body;
+
+  const result = await pool.query(
+    "SELECT * FROM users WHERE email=$1",
+    [email]
+  );
+
+  const user = result.rows[0];
+
+  if (!user) {
+    return res.status(401).json({
+      message: "User not found"
+    });
+  }
+
+  const valid = await bcrypt.compare(
+    password,
+    user.password_hash
+  );
+
+  if (!valid) {
+    return res.status(401).json({
+      message: "Wrong password"
+    });
+  }
+
+  const token = jwt.sign(
+    {
+      userId: user.id,
+      role: user.role
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "7d"
+    }
+  );
+
+  res.json({ token });
+});
+router.get("/me", auth, async (req, res) => {
+
+  const result = await pool.query(
+    `
+      SELECT
+      id,
+      email,
+      username,
+      role,
+      avatar_url,
+      bio
+      FROM users
+      WHERE id=$1
+    `,
+    [req.user.userId]
+  );
+
+  res.json(result.rows[0]);
+});
+"use client";
+
+import { createContext } from "react";
+
+export const AuthContext =
+  createContext(null);
+"use client";
+
+import { useEffect, useState } from "react";
+
+export default function Dashboard() {
+
+  const [user, setUser] =
+    useState(null);
+
+  useEffect(() => {
+
+    fetch("http://localhost:5000/me", {
+      headers: {
+        Authorization:
+          `Bearer ${localStorage.getItem("token")}`
+      }
+    })
+      .then(res => res.json())
+      .then(setUser);
+
+  }, []);
+
+  return (
+    <div>
+
+      <h1>Dashboard</h1>
+
+      {user && (
+        <>
+          <p>{user.username}</p>
+          <p>{user.email}</p>
+        </>
+      )}
+
+    </div>
+  );
+}CREATE TABLE creators (
+    id UUID PRIMARY KEY,
+    user_id UUID UNIQUE REFERENCES users(id),
+    display_name VARCHAR(255),
+    bio TEXT,
+    banner_url TEXT,
+    avatar_url TEXT,
+    monthly_price DECIMAL(10,2) DEFAULT 9.99,
+    verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE subscriptions (
+    id UUID PRIMARY KEY,
+    subscriber_id UUID REFERENCES users(id),
+    creator_id UUID REFERENCES creators(id),
+    active BOOLEAN DEFAULT TRUE,
+    start_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE posts (
+    id UUID PRIMARY KEY,
+    creator_id UUID REFERENCES creators(id),
+    title VARCHAR(255),
+    description TEXT,
+    media_url TEXT,
+    is_premium BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+router.post("/creator/apply", auth, async (req, res) => {
+
+  const {
+    display_name,
+    bio
+  } = req.body;
+
+  const result = await pool.query(
+    `
+    INSERT INTO creators
+    (
+      id,
+      user_id,
+      display_name,
+      bio
+    )
+    VALUES
+    (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3
+    )
+    RETURNING *
+    `,
+    [
+      req.user.userId,
+      display_name,
+      bio
+    ]
+  );
+
+  res.json(result.rows[0]);
+});
+router.post("/posts", auth, async (req, res) => {
+
+  const creator = await pool.query(
+    "SELECT * FROM creators WHERE user_id=$1",
+    [req.user.userId]
+  );
+
+  if (!creator.rows.length) {
+    return res.status(403).json({
+      message: "Creator account required"
+    });
+  }
+
+  const {
+    title,
+    description,
+    media_url,
+    is_premium
+  } = req.body;
+
+  const result = await pool.query(
+    `
+    INSERT INTO posts
+    (
+      id,
+      creator_id,
+      title,
+      description,
+      media_url,
+      is_premium
+    )
+    VALUES
+    (
+      gen_random_uuid(),
+      $1,
+      $2,
+      $3,
+      $4,
+      $5
+    )
+    RETURNING *
+    `,
+    [
+      creator.rows[0].id,
+      title,
+      description,
+      media_url,
+      is_premium
+    ]
+  );
+
+  res.json(result.rows[0]);
+});
+router.post(
+  "/subscribe/:creatorId",
+  auth,
+  async (req, res) => {
+
+    const creatorId =
+      req.params.creatorId;
+
+    const result = await pool.query(
+      `
+      INSERT INTO subscriptions
+      (
+        id,
+        subscriber_id,
+        creator_id
+      )
+      VALUES
+      (
+        gen_random_uuid(),
+        $1,
+        $2
+      )
+      RETURNING *
+      `,
+      [
+        req.user.userId,
+        creatorId
+      ]
+    );
+
+    res.json(result.rows[0]);
+});
+export default function CreatorPage() {
+
+  return (
+    <div>
+
+      <img
+        src="/banner.jpg"
+        alt="banner"
+      />
+
+      <h1>Creator Name</h1>
+
+      <p>Creator Bio</p>
+
+      <button>
+        Subscribe
+      </button>
+
+    </div>
+  );
+}
+export default function CreatorDashboard() {
+
+  return (
+    <div>
+
+      <h1>Creator Dashboard</h1>
+
+      <button>
+        New Post
+      </button>
+
+      <button>
+        Analytics
+      </button>
+
+      <button>
+        Subscribers
+      </button>
+
+    </div>
+  );
+}
+router.get("/feed", async (req, res) => {
+
+  const result = await pool.query(
+    `
+    SELECT
+      posts.*,
+      creators.display_name
+    FROM posts
+    JOIN creators
+      ON posts.creator_id = creators.id
+    ORDER BY created_at DESC
+    `
+  );
+
+  res.json(result.rows);
+});
